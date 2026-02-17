@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Dependency Graph</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Cytoscape.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Custom scrollbar */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <!-- Sidebar / Controls -->
+    <div class="w-full md:w-80 lg:w-96 bg-white shadow-xl z-20 flex flex-col border-r border-gray-200 shrink-0 h-auto md:h-full max-h-[60vh] md:max-h-full">
+        <!-- Header -->
+        <div class="p-5 bg-blue-600 text-white shrink-0 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold flex items-center gap-2">
+                    <i class="ph ph-graph"></i> Dependency Graph
+                </h1>
+                <p class="text-blue-100 text-sm mt-1">Organize your tasks</p>
+            </div>
+            <!-- Data Controls (Import/Export) -->
+            <div class="flex gap-2">
+                <button type="button" onclick="document.getElementById('csvInput').click()" title="Import CSV" class="p-2 bg-blue-500 hover:bg-blue-400 rounded text-white transition">
+                    <i class="ph ph-upload-simple"></i>
+                </button>
+                <button type="button" onclick="exportToCSV()" title="Export CSV" class="p-2 bg-blue-500 hover:bg-blue-400 rounded text-white transition">
+                    <i class="ph ph-file-csv"></i>
+                </button>
+                <button type="button" onclick="exportToImage()" title="Export Image" class="p-2 bg-blue-500 hover:bg-blue-400 rounded text-white transition">
+                    <i class="ph ph-image"></i>
+                </button>
+                <input type="file" id="csvInput" accept=".csv" class="hidden" onchange="importFromCSV(this)">
+            </div>
+        </div>
+
+        <div class="p-5 flex-1 overflow-y-auto flex flex-col gap-4 custom-scroll">
+            <!-- Input Form -->
+            <div class="shrink-0">
+                <label class="block text-sm font-medium text-gray-700 mb-1">New Task Name</label>
+                <div class="flex gap-2">
+                    <input type="text" id="taskInput" placeholder="Enter task..." 
+                        class="w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-base"
+                        onkeydown="if(event.key === 'Enter') addTask()">
+                </div>
+                <p id="errorMsg" class="text-red-500 text-xs mt-1 hidden">Please enter a task name</p>
+            </div>
+
+            <div class="flex-1 flex flex-col min-h-[150px]">
+                <div class="flex justify-between items-end mb-1">
+                    <label class="block text-sm font-medium text-gray-700">Depends On</label>
+                </div>
+                
+                <!-- Search Dependencies -->
+                <div class="relative mb-2">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="ph ph-magnifying-glass text-gray-400"></i>
+                    </div>
+                    <input type="text" id="depSearch" placeholder="Search tasks..." 
+                        class="w-full rounded-md border border-gray-200 bg-gray-50 pl-9 pr-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        oninput="filterDependencies()">
+                </div>
+
+                <!-- Dependency List -->
+                <div id="dependencyList" class="custom-scroll flex-1 border border-gray-200 rounded-md bg-gray-50 min-h-[120px] overflow-y-auto relative">
+                    <div id="emptyMsg" class="absolute inset-0 flex items-center justify-center text-gray-400 text-xs italic p-4 text-center">
+                        Add a task first to see it listed here.
+                    </div>
+                    <!-- Checkboxes generated here -->
+                </div>
+            </div>
+
+            <div class="shrink-0 pt-2 space-y-2">
+                <button type="button" onclick="addTask()" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-md transition duration-200 shadow-md flex items-center justify-center gap-2 active:scale-[0.98]">
+                    <i class="ph ph-plus-circle text-lg"></i>
+                    Add Task
+                </button>
+                
+                <!-- Reset Section -->
+                <div class="relative pt-2">
+                    <button type="button" id="resetBtn" onclick="showResetConfirm()" class="w-full text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 py-2 rounded transition flex items-center justify-center gap-1">
+                        <i class="ph ph-trash"></i> Reset All Tasks
+                    </button>
+                    
+                    <!-- Inline Confirm -->
+                    <div id="resetConfirm" class="hidden absolute bottom-0 left-0 right-0 bg-white border border-red-100 shadow-lg rounded-md p-2 flex items-center justify-between z-10">
+                        <span class="text-xs text-red-600 font-medium ml-2">Are you sure?</span>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="cancelReset()" class="px-2 py-1 text-xs text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Cancel</button>
+                            <button type="button" onclick="confirmReset()" class="px-2 py-1 text-xs text-white bg-red-600 rounded hover:bg-red-700">Yes, Clear</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Graph Area -->
+    <div class="flex-1 relative bg-gray-50 overflow-hidden h-full">
+        <!-- Legend -->
+        <div class="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur p-3 rounded-lg shadow-sm border border-gray-200 text-xs text-gray-600 pointer-events-none select-none">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="w-3 h-3 rounded-md bg-blue-500"></span> Task Node
+            </div>
+            <div class="flex items-center gap-2">
+                <i class="ph ph-arrow-right text-gray-400"></i> Dependency
+            </div>
+        </div>
+        
+        <div id="cy" class="w-full h-full"></div>
+    </div>
+
+    <script>
+        // State
+        let tasks = [];
+        let cy;
+
+        // Colors
+        const NODE_COLOR = '#3b82f6'; // blue-500
+        const NODE_TEXT_COLOR = '#ffffff';
+        const EDGE_COLOR = '#9ca3af'; // gray-400
+
+        // Initialize Cytoscape
+        function initCy() {
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                boxSelectionEnabled: false,
+                autounselectify: true,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'background-color': NODE_COLOR,
+                            'label': 'data(label)',
+                            'color': NODE_TEXT_COLOR,
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'font-size': '13px',
+                            'width': 'label',
+                            'height': 'label',
+                            'padding': '12px',
+                            'shape': 'round-rectangle',
+                            'text-wrap': 'wrap',
+                            'text-max-width': '120px',
+                            'font-weight': '500'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 2,
+                            'line-color': EDGE_COLOR,
+                            'target-arrow-color': EDGE_COLOR,
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'arrow-scale': 1.2
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'breadthfirst',
+                    directed: true,
+                    padding: 50,
+                    spacingFactor: 1.25,
+                    avoidOverlap: true
+                }
+            });
+        }
+
+        function filterDependencies() {
+            const term = document.getElementById('depSearch').value.toLowerCase();
+            const labels = document.querySelectorAll('#dependencyList label');
+            
+            labels.forEach(label => {
+                const text = label.querySelector('span').textContent.toLowerCase();
+                if (text.includes(term)) {
+                    label.style.display = 'flex';
+                } else {
+                    label.style.display = 'none';
+                }
+            });
+        }
+
+        // Render the list of checkboxes
+        function renderDependencyList() {
+            const container = document.getElementById('dependencyList');
+            const emptyMsg = document.getElementById('emptyMsg');
+            const searchTerm = document.getElementById('depSearch').value.toLowerCase();
+
+            // Clear current list items
+            container.innerHTML = '';
+            container.appendChild(emptyMsg);
+
+            if (tasks.length === 0) {
+                emptyMsg.style.display = 'flex';
+                return;
+            } else {
+                emptyMsg.style.display = 'none';
+            }
+
+            tasks.forEach(task => {
+                const label = document.createElement('label');
+                label.className = 'flex items-center gap-3 p-3 hover:bg-blue-50 border-b border-gray-100 last:border-0 cursor-pointer transition-colors';
+                
+                // Hide if search term doesn't match
+                if(searchTerm && !task.text.toLowerCase().includes(searchTerm)) {
+                    label.style.display = 'none';
+                }
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = task.id;
+                checkbox.className = 'w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 flex-shrink-0';
+                
+                const span = document.createElement('span');
+                span.className = 'text-sm text-gray-700 font-medium break-all';
+                span.textContent = task.text;
+
+                label.appendChild(checkbox);
+                label.appendChild(span);
+                container.appendChild(label);
+            });
+        }
+
+        function addTask() {
+            const input = document.getElementById('taskInput');
+            const errorMsg = document.getElementById('errorMsg');
+            const text = input.value.trim();
+
+            if (!text) {
+                errorMsg.classList.remove('hidden');
+                input.classList.add('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
+                input.classList.remove('border-gray-300', 'focus:border-blue-500', 'focus:ring-blue-500');
+                return;
+            }
+
+            // Reset error state
+            errorMsg.classList.add('hidden');
+            input.classList.remove('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
+            input.classList.add('border-gray-300', 'focus:border-blue-500', 'focus:ring-blue-500');
+
+            // Get selected dependencies
+            // Note: We select from ALL checkboxes, even hidden ones
+            const checkboxes = document.querySelectorAll('#dependencyList input[type="checkbox"]:checked');
+            const dependencies = Array.from(checkboxes).map(cb => cb.value);
+
+            const newTask = {
+                id: 't' + Date.now() + Math.floor(Math.random() * 1000),
+                text: text,
+                dependencies: dependencies
+            };
+
+            tasks.push(newTask);
+            
+            // Add to Graph
+            updateGraph(newTask);
+
+            // Reset UI
+            input.value = '';
+            document.getElementById('depSearch').value = ''; 
+            renderDependencyList();
+            
+            // Focus back on input
+            input.focus();
+        }
+
+        function updateGraph(newTask) {
+            cy.add({
+                group: 'nodes',
+                data: { id: newTask.id, label: newTask.text }
+            });
+
+            newTask.dependencies.forEach(depId => {
+                cy.add({
+                    group: 'edges',
+                    data: { source: depId, target: newTask.id }
+                });
+            });
+
+            runLayout();
+        }
+
+        function rebuildGraph() {
+            cy.elements().remove();
+            
+            // Add all nodes first
+            tasks.forEach(task => {
+                cy.add({
+                    group: 'nodes',
+                    data: { id: task.id, label: task.text }
+                });
+            });
+
+            // Add all edges
+            tasks.forEach(task => {
+                task.dependencies.forEach(depId => {
+                    if (tasks.find(t => t.id === depId)) {
+                        cy.add({
+                            group: 'edges',
+                            data: { source: depId, target: task.id }
+                        });
+                    }
+                });
+            });
+            
+            runLayout();
+        }
+
+        function runLayout() {
+            const layout = cy.layout({
+                name: 'breadthfirst',
+                directed: true,
+                padding: 50,
+                spacingFactor: 1.5,
+                animate: true,
+                animationDuration: 300,
+                fit: true
+            });
+            layout.run();
+        }
+
+        // --- Export/Import Logic ---
+
+        function exportToCSV() {
+            if (tasks.length === 0) {
+                showError("No tasks to export");
+                return;
+            }
+
+            // CSV Header
+            let csvContent = "id,text,dependencies\n";
+
+            tasks.forEach(task => {
+                const safeText = task.text.replace(/"/g, '""');
+                const safeDeps = task.dependencies.join(';');
+                csvContent += `${task.id},"${safeText}",${safeDeps}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            downloadBlob(blob, "dependency_graph.csv");
+        }
+
+        function exportToImage() {
+            if (tasks.length === 0) {
+                showError("No graph to export");
+                return;
+            }
+
+            // Export PNG
+            const pngBlob = cy.png({
+                output: 'blob',
+                bg: '#ffffff', // Force white background
+                full: true,    // Export the full graph, not just the visible viewport
+                scale: 1.5     // Slightly higher resolution
+            });
+            
+            downloadBlob(pngBlob, "dependency_graph.png");
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function importFromCSV(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const text = e.target.result;
+                    const lines = text.split('\n');
+                    const newTasks = [];
+
+                    for(let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if(!line) continue;
+                        const matches = line.match(/^([^,]+),"((?:[^"]|"")*)"(?:,(.*))?$/);
+                        
+                        if (matches) {
+                            const id = matches[1];
+                            const text = matches[2].replace(/""/g, '"');
+                            const depsRaw = matches[3];
+                            
+                            let dependencies = [];
+                            if (depsRaw && depsRaw.trim().length > 0) {
+                                dependencies = depsRaw.split(';');
+                            }
+
+                            newTasks.push({ id, text, dependencies });
+                        }
+                    }
+
+                    if (newTasks.length > 0) {
+                        tasks = newTasks;
+                        rebuildGraph();
+                        renderDependencyList();
+                        document.getElementById('depSearch').value = '';
+                    } else {
+                        alert("Could not parse CSV or file was empty. Format should be: id,\"text\",deps");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Error importing CSV.");
+                }
+                input.value = '';
+            };
+
+            reader.readAsText(file);
+        }
+
+        function showError(msg) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = msg;
+            errorMsg.classList.remove('hidden');
+            setTimeout(() => {
+                errorMsg.classList.add('hidden');
+                errorMsg.textContent = "Please enter a task name"; // reset to default
+            }, 3000);
+        }
+
+        // --- Reset Functionality ---
+        
+        function showResetConfirm() {
+            document.getElementById('resetBtn').classList.add('hidden');
+            document.getElementById('resetConfirm').classList.remove('hidden');
+            document.getElementById('resetConfirm').classList.add('flex');
+        }
+
+        function cancelReset() {
+            document.getElementById('resetConfirm').classList.add('hidden');
+            document.getElementById('resetConfirm').classList.remove('flex');
+            document.getElementById('resetBtn').classList.remove('hidden');
+        }
+
+        function confirmReset() {
+            tasks = [];
+            cy.elements().remove();
+            renderDependencyList();
+            cancelReset();
+        }
+
+        // --- Initialization ---
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initCy();
+            renderDependencyList();
+        });
+
+        window.addEventListener('resize', () => {
+            if(cy) {
+                cy.resize();
+                cy.fit();
+            }
+        });
+
+    </script>
+</body>
+</html>
