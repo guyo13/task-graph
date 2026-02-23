@@ -1,9 +1,9 @@
 name: Playwright Tests
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 jobs:
   test:
     timeout-minutes: 60
@@ -15,16 +15,16 @@ jobs:
         node-version: lts/*
     - uses: pnpm/action-setup@v3
       with:
-        version: 9
+        version: 10
     - name: Install dependencies
       working-directory: test
       run: pnpm install
     - name: Install Playwright Browsers
       working-directory: test
-      run: npx playwright install --with-deps
+      run: pnpx playwright install --with-deps
     - name: Run Playwright tests
       working-directory: test
-      run: npx playwright test
+      run: pnpm test
     - uses: actions/upload-artifact@v4
       if: always()
       with:
