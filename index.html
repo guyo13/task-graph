@@ -43,16 +43,28 @@
             </div>
             <!-- Data Controls (Import/Export) -->
             <div class="flex gap-2">
+                <!-- CSV Controls -->
                 <button type="button" onclick="document.getElementById('csvInput').click()" title="Import CSV" class="p-2 bg-blue-500 hover:bg-blue-400 rounded text-white transition">
                     <i class="ph ph-upload-simple"></i>
                 </button>
                 <button type="button" onclick="exportToCSV()" title="Export CSV" class="p-2 bg-blue-500 hover:bg-blue-400 rounded text-white transition">
                     <i class="ph ph-file-csv"></i>
                 </button>
+
+                <!-- JSON Controls -->
+                <button type="button" onclick="document.getElementById('jsonInput').click()" title="Import JSON" class="p-2 bg-indigo-500 hover:bg-indigo-400 rounded text-white transition">
+                    <i class="ph ph-file-code"></i>
+                </button>
+                <button type="button" onclick="exportToJSON()" title="Export JSON" class="p-2 bg-indigo-500 hover:bg-indigo-400 rounded text-white transition">
+                    <i class="ph ph-download-simple"></i>
+                </button>
+
                 <button type="button" onclick="exportToImage()" title="Export Image" class="p-2 bg-blue-500 hover:bg-blue-400 rounded text-white transition">
                     <i class="ph ph-image"></i>
                 </button>
+
                 <input type="file" id="csvInput" accept=".csv" class="hidden" onchange="importFromCSV(this)">
+                <input type="file" id="jsonInput" accept=".json" class="hidden" onchange="importFromJSON(this)">
             </div>
         </div>
 
@@ -343,6 +355,56 @@
         }
 
         // --- Export/Import Logic ---
+
+        function exportToJSON() {
+            if (tasks.length === 0) {
+                showError("No tasks to export");
+                return;
+            }
+
+            const data = {
+                tasks: tasks
+            };
+
+            const jsonString = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            downloadBlob(blob, "dependency_graph.json");
+        }
+
+        function importFromJSON(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const text = e.target.result;
+                    const data = JSON.parse(text);
+
+                    if (data && Array.isArray(data.tasks)) {
+                        const validTasks = data.tasks.every(t => t.id && t.text && Array.isArray(t.dependencies));
+
+                        if(validTasks) {
+                            tasks = data.tasks;
+                            rebuildGraph();
+                            renderDependencyList();
+                            document.getElementById('depSearch').value = '';
+                        } else {
+                            alert("Invalid JSON format. Tasks must have id, text, and dependencies array.");
+                        }
+                    } else {
+                        alert("Invalid JSON format. Root object must have 'tasks' array.");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Error parsing JSON.");
+                }
+                input.value = ''; // Reset input
+            };
+
+            reader.readAsText(file);
+        }
 
         function exportToCSV() {
             if (tasks.length === 0) {
